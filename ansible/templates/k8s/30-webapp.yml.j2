@@ -28,6 +28,10 @@ spec:
         - name: webapp
           image: "{{ image_repo }}:{{ app_version }}-{{ build_number }}"
           imagePullPolicy: IfNotPresent
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           ports:
             - containerPort: 5000
           env:
