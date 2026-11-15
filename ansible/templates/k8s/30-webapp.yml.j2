@@ -31,7 +31,7 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["sleep", "5"]
+                command: ["sleep", "10"]
           ports:
             - containerPort: 5000
           env:
@@ -53,7 +53,7 @@ spec:
               path: {{ readiness_path }}
               port: 5000
             initialDelaySeconds: 3
-            periodSeconds: 5
+            periodSeconds: 2
           livenessProbe:
             httpGet:
               path: {{ liveness_path }}
