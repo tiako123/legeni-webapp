@@ -3,7 +3,7 @@
   hosts: localhost
   gather_facts: false
   vars:
-    image_repo: legeni-webapp
+    image_repo: tiako123/legeni-webapp
     app_version: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../VERSION') | trim }}"
     readiness_path: /ready
     liveness_path: /health
@@ -68,6 +68,7 @@
             command: >-
               python -c 'import urllib.request as u; print(u.urlopen("http://legeni-webapp/api/info", timeout=5).read().decode())'
           register: smoke
+          changed_when: false
 
         - name: Vérifier la version déployée
           ansible.builtin.assert:
