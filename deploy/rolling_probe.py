@@ -1,9 +1,9 @@
-import json, time, urllib.request, collections
+import json, os, time, urllib.request, collections
 c = collections.Counter()
 t0 = time.time()
 errs = []
 started = False
-fin = t0 + 110
+fin = t0 + int(os.environ.get("DURATION", "110"))
 while time.time() < fin:
     try:
         r = urllib.request.urlopen("http://legeni-webapp/api/info", timeout=2)
