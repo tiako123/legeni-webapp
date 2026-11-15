@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legeni-webapp
+  namespace: {{ namespace }}
+  labels:
+    app: legeni-webapp
+    env: {{ target_env }}
+spec:
+  replicas: {{ replicas }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: legeni-webapp
+  template:
+    metadata:
+      labels:
+        app: legeni-webapp
+        env: {{ target_env }}
+        release: "{{ app_version }}-{{ build_number }}"
+    spec:
+      containers:
+        - name: webapp
+          image: "{{ image_repo }}:{{ app_version }}-{{ build_number }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          env:
+            - name: APP_VERSION
+              value: "{{ app_version }}"
+            - name: APP_ENV
+              value: "{{ target_env }}"
+            - name: APP_COLOR
+              value: "{{ app_color }}"
+            - name: REDIS_HOST
+              value: redis
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: REDIS_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: {{ readiness_path }}
+              port: 5000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: {{ liveness_path }}
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: legeni-webapp
+  namespace: {{ namespace }}
+  labels:
+    env: {{ target_env }}
+spec:
+  type: NodePort
+  selector:
+    app: legeni-webapp
+  ports:
+    - port: 80
+      targetPort: 5000
+      nodePort: {{ node_port }}

@@ -1,0 +1,4 @@
+namespace: legeni-prod
+replicas: 3
+app_color: "#1f6feb"
+node_port: 30080

@@ -1,0 +1,103 @@
+---
+- name: Déploiement de Legeni WebApp dans Kubernetes
+  hosts: localhost
+  gather_facts: false
+  vars:
+    image_repo: legeni-webapp
+    app_version: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../VERSION') | trim }}"
+    readiness_path: /ready
+    liveness_path: /health
+  tasks:
+    - name: Vérifier les paramètres
+      ansible.builtin.assert:
+        that:
+          - target_env is defined
+          - target_env in ['staging', 'prod']
+          - build_number is defined
+        fail_msg: "Usage : -e target_env=staging|prod -e build_number=N"
+
+    - name: Charger les variables de l'environnement et le coffre
+      ansible.builtin.include_vars: "{{ item }}"
+      loop:
+        - "{{ playbook_dir }}/vars/{{ target_env }}.yml"
+        - "{{ playbook_dir }}/vars/vault.yml"
+      no_log: true
+
+    - name: Namespace
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', 'k8s/00-namespace.yml.j2') | from_yaml }}"
+
+    - name: Secret Redis (valeur masquée)
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', 'k8s/10-secret.yml.j2') | from_yaml }}"
+      no_log: true
+
+    - name: Redis (StatefulSet + volume persistant)
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', 'k8s/20-redis.yml.j2') | from_yaml_all | list }}"
+        wait: true
+        wait_timeout: 180
+
+    - name: Application avec retour arrière automatique
+      block:
+        - name: Appliquer et attendre la fin du rolling update
+          kubernetes.core.k8s:
+            state: present
+            definition: "{{ lookup('ansible.builtin.template', 'k8s/30-webapp.yml.j2') | from_yaml_all | list }}"
+            wait: true
+            wait_timeout: 120
+
+        - name: Trouver un pod de la nouvelle version
+          kubernetes.core.k8s_info:
+            kind: Pod
+            namespace: "{{ namespace }}"
+            label_selectors:
+              - app=legeni-webapp
+              - "release={{ app_version }}-{{ build_number }}"
+            field_selectors:
+              - status.phase=Running
+          register: new_pods
+
+        - name: Smoke test (interroge le Service depuis le cluster)
+          kubernetes.core.k8s_exec:
+            namespace: "{{ namespace }}"
+            pod: "{{ new_pods.resources[0].metadata.name }}"
+            command: >-
+              python -c 'import urllib.request as u; print(u.urlopen("http://legeni-webapp/api/info", timeout=5).read().decode())'
+          register: smoke
+
+        - name: Vérifier la version déployée
+          ansible.builtin.assert:
+            that: (smoke.stdout | from_json).version == app_version
+            fail_msg: "Mauvaise version déployée : {{ smoke.stdout }}"
+            success_msg: "OK : {{ target_env }} répond en version {{ app_version }}"
+
+      rescue:
+        - name: Retour arrière automatique
+          kubernetes.core.k8s_rollback:
+            api_version: apps/v1
+            kind: Deployment
+            name: legeni-webapp
+            namespace: "{{ namespace }}"
+          ignore_errors: true
+
+        - name: Attendre le retour à la version précédente
+          kubernetes.core.k8s_info:
+            kind: Deployment
+            name: legeni-webapp
+            namespace: "{{ namespace }}"
+          register: rb
+          until: >-
+            (rb.resources | length > 0) and
+            (rb.resources[0].status.unavailableReplicas | default(0)) == 0 and
+            (rb.resources[0].status.replicas | default(0)) == (replicas | int)
+          retries: 30
+          delay: 4
+          ignore_errors: true
+
+        - name: Signaler l'échec
+          ansible.builtin.fail:
+            msg: "Déploiement en échec : retour arrière effectué. La version précédente est toujours servie."

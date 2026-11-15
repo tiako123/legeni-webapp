@@ -1,0 +1,4 @@
+namespace: legeni-staging
+replicas: 2
+app_color: "#bf8700"
+node_port: 30081
