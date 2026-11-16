@@ -4,17 +4,22 @@ FROM python:3.12-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
-# On copie d'abord requirements.txt seul : cette couche reste en cache
-# tant que les dépendances ne changent pas.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ---------- Étape 2 : lint + tests (docker build --target test) ----------
+# ---------- Étape 2a : contrôle de style (docker build --target lint) ----------
+FROM base AS lint
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+COPY . .
+RUN flake8 .
+
+# ---------- Étape 2b : tests + couverture >= 80 % (docker build --target test) ----------
 FROM base AS test
 COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements-dev.txt
 COPY . .
-RUN flake8 . && pytest -q
+RUN mkdir -p /reports && pytest -q --junitxml=/reports/junit.xml --cov=app --cov-report=term --cov-report=xml:/reports/coverage.xml --cov-fail-under=80
 
 # ---------- Étape 3 : image finale de production ----------
 FROM base AS runtime
