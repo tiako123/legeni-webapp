@@ -14,7 +14,7 @@ pipeline {
         IMAGE               = 'tiako123/legeni-webapp'
         VERSION             = sh(script: 'cat VERSION', returnStdout: true).trim()
         TAG                 = "${VERSION}-${BUILD_NUMBER}"
-        K8S_AUTH_KUBECONFIG = credentials('kubeconfig')
+        K8S_AUTH_KUBECONFIG = credentials('kubeconfig-jenkins')
         VAULT_FILE          = credentials('ansible-vault-pass')
     }
 
